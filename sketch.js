@@ -9,7 +9,7 @@ class Particle {
     this.acceleration = createVector(0, 0);
     this.force = createVector(0, 0);
   }
-  scale_value(v, base = 10, scale = 2) {
+  scale_value(v, base = 5, scale = 0.5) {
     return base + Math.log(v + 1) * scale;
   }
   get_aceleration() {
@@ -95,14 +95,58 @@ class Particle {
 
     this.force.add(fv);
   }
-
+  need_other(other) {
+    this.collide(other);
+    this.electric_force(other);
+    other.electric_force(this);
+  }
+  solo_things() {
+    this.edge();
+    this.update_pos();
+    this.draw();
+  }
   draw() {
     fill(this.color);
     circle(this.pos.x, this.pos.y, this.radius * 2);
   }
 }
+class ParticleLarge extends Particle {
+  constructor(x, y, mass, charge = 0) {
+    super(x, y, mass, charge);
+  }
+  strong_force(other) {
+    let dir = p5.Vector.sub(other.pos, this.pos);
+    let centerDist = dir.mag();
 
-class Protron extends Particle {
+    if (centerDist == 0) {
+      return;
+    }
+
+    let dist = centerDist - this.radius - other.radius;
+    dist = max(0, dist);
+
+    dir.normalize();
+
+    let x = dist / nm;
+
+    let repulsion = 10 * exp(-pow(x / 0.5, 2));
+    let attraction = 10 * exp(-pow((x - 1.5) / 0.8, 2));
+
+    let f = repulsion - attraction;
+
+    let fv = dir.copy().mult(-f);
+
+    this.force.add(fv);
+  }
+  need_other(other) {
+    super.need_other(other);
+    if (other instanceof ParticleLarge) {
+      this.strong_force(other);
+      other.strong_force(this);
+    }
+  }
+}
+class Protron extends ParticleLarge {
   constructor(x, y) {
     super(x, y, 1836, 1);
   }
@@ -113,7 +157,7 @@ class Electron extends Particle {
     super(x, y, 1, -1);
   }
 }
-class Nuetron extends Particle {
+class Neutron extends ParticleLarge {
   constructor(x, y) {
     super(x, y, 1839, 0);
   }
@@ -123,15 +167,19 @@ let protron;
 let electron;
 let nuetron;
 let particles = [];
-const k = 10000;
+const k = 1;
+const nm = 5;
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  protron = new Protron(100, 320);
+  frameRate(3000);
+  protron = new Protron(300, 320);
+  particles.push(protron);
   particles.push(protron);
   electron = new Electron(200, 149);
   particles.push(electron);
-  nuetron = new Nuetron(320, 100);
+  particles.push(electron);
+  nuetron = new Neutron(300, 320);
   particles.push(nuetron);
 }
 
@@ -141,16 +189,12 @@ function draw() {
     let particleA = particles[i];
     for (let j = i + 1; j < particles.length; j++) {
       let particleB = particles[j];
-      particleA.collide(particleB);
-      particleA.electric_force(particleB);
-      particleB.electric_force(particleA);
+      particleA.need_other(particleB);
     }
   }
 
   // Movement
   for (let particle of particles) {
-    particle.edge();
-    particle.update_pos();
-    particle.draw();
+    particle.solo_things();
   }
 }
