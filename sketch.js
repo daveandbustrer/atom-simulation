@@ -29,8 +29,9 @@ class Particle {
     let impactVector = p5.Vector.sub(other.pos, this.pos);
     let d = impactVector.mag();
 
-    if (d == 0) {
-      return;
+    if (d < 0.001) {
+      impactVector = createVector(1, 0);
+      d = 0.001;
     }
 
     let minDist = this.radius + other.radius;
@@ -85,12 +86,17 @@ class Particle {
   }
   electric_force(other) {
     let dir = p5.Vector.sub(other.pos, this.pos);
-    let dist = dir.mag();
+    let distSq = dir.magSq();
 
-    dir.normalize();
+    // Prevent division by zero
+    if (distSq < 0.0001) {
+      return;
+    }
 
     let charges = this.charge * other.charge;
-    let f = k * (charges / (dist * dist));
+    let f = k * (charges / distSq);
+
+    dir.normalize();
     let fv = dir.copy().mult(-f);
 
     this.force.add(fv);
@@ -114,35 +120,64 @@ class ParticleLarge extends Particle {
   constructor(x, y, mass, charge = 0) {
     super(x, y, mass, charge);
   }
+  create_nucleus(other) {
+    // Make sure neither particle has already been removed
+    if (!particles.includes(this) || !particles.includes(other)) {
+      return;
+    }
+
+    let members = [this, other];
+
+    let protons = members.filter((p) => p instanceof Protron);
+    let neutrons = members.filter((p) => p instanceof Neutron);
+
+    // Remove both original particles
+    particles = particles.filter((p) => p !== this && p !== other);
+
+    // Replace them with one nucleus object
+    particles.push(new nucleus(protons, neutrons));
+  }
   strong_force(other) {
     let dir = p5.Vector.sub(other.pos, this.pos);
     let centerDist = dir.mag();
 
-    if (centerDist == 0) {
+    if (centerDist < 0.0001) {
       return;
     }
 
     let dist = centerDist - this.radius - other.radius;
     dist = max(0, dist);
 
+    // Only fuse when the particles are almost touching
+    if (dist <= nm * 0.1) {
+      pendingFusions.push([this, other]);
+      return;
+    }
+
+    // The strong force has a limited range
+    if (dist > nm * 5) {
+      return;
+    }
+
     dir.normalize();
 
     let x = dist / nm;
 
     let repulsion = 10 * exp(-pow(x / 0.5, 2));
-    let attraction = 10 * exp(-pow((x - 1.5) / 0.8, 2));
+    let attraction = 5 * exp(-pow((x - 1.5) / 0.8, 2));
 
     let f = repulsion - attraction;
-
     let fv = dir.copy().mult(-f);
 
+    // Equal and opposite forces
     this.force.add(fv);
+    other.force.sub(fv);
   }
   need_other(other) {
     super.need_other(other);
+
     if (other instanceof ParticleLarge) {
       this.strong_force(other);
-      other.strong_force(this);
     }
   }
 }
@@ -162,12 +197,52 @@ class Neutron extends ParticleLarge {
     super(x, y, 1839, 0);
   }
 }
+class nucleus extends Particle {
+  constructor(protrons, neutrons) {
+    let total_pos = createVector(0, 0);
+    let size = 0;
+    for (let i in protrons) {
+      let protron = protrons[i];
+      total_pos.add(protron.pos);
+      size += protron.radius * 2;
+    }
+    for (let i in neutrons) {
+      let neutron = neutrons[i];
+      total_pos.add(neutron.pos);
+      size += neutron.radius * 2;
+    }
+    let center = total_pos.div(protrons.length + neutrons.length);
+    super(
+      center.x,
+      center.y,
+      1836 * protrons.length + 1839 * neutrons.length,
+      protrons.length,
+    );
+    this.protrons = protrons;
+    this.neutrons = neutrons;
+    this.radius = size;
+  }
+  draw() {
+    for (let i in this.protrons) {
+      let protron = this.protrons[i];
+      fill("red");
+      circle(protron.pos.x, protron.pos.y, protron.radius * 2);
+    }
+    for (let i in this.neutrons) {
+      let neutrons = this.neutrons[i];
+      fill("green");
+      circle(neutrons.pos.x, neutrons.pos.y, neutrons.radius * 2);
+    }
+  }
+  collide() {}
+}
 
 let protron;
 let electron;
 let nuetron;
 let particles = [];
-const k = 1;
+let pending_fusion = [];
+const k = 500;
 const nm = 5;
 
 function setup() {
@@ -175,25 +250,36 @@ function setup() {
   frameRate(3000);
   protron = new Protron(300, 320);
   particles.push(protron);
-  particles.push(protron);
   electron = new Electron(200, 149);
   particles.push(electron);
-  particles.push(electron);
-  nuetron = new Neutron(300, 320);
+  nuetron = new Neutron(320, 300);
   particles.push(nuetron);
 }
 
 function draw() {
   background("black");
+
+  pendingFusions = [];
+  console.log(particles);
+  // Calculate interactions between each pair
   for (let i = 0; i < particles.length; i++) {
     let particleA = particles[i];
+
     for (let j = i + 1; j < particles.length; j++) {
       let particleB = particles[j];
+
       particleA.need_other(particleB);
     }
   }
 
-  // Movement
+  // Create nuclei after calculating all interactions
+  for (let [a, b] of pendingFusions) {
+    if (particles.includes(a) && particles.includes(b)) {
+      a.create_nucleus(b);
+    }
+  }
+
+  // Move and draw every particle
   for (let particle of particles) {
     particle.solo_things();
   }
