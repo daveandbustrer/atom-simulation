@@ -204,12 +204,12 @@ class nucleus extends Particle {
     for (let i in protrons) {
       let protron = protrons[i];
       total_pos.add(protron.pos);
-      size += protron.radius * 2;
+      size += protron.radius;
     }
     for (let i in neutrons) {
       let neutron = neutrons[i];
       total_pos.add(neutron.pos);
-      size += neutron.radius * 2;
+      size += neutron.radius;
     }
     let center = total_pos.div(protrons.length + neutrons.length);
     super(
