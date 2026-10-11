@@ -9,5 +9,5 @@ it has kind of realistic simulation of protons, electrons, and neutrons
 you can click to add a particle into the screen and see how it will react
 
 ## where to find it
-click the link below
+click the link:
 https://daveandbustrer.github.io/atom-simulation/
