@@ -234,20 +234,35 @@ class nucleus extends Particle {
       circle(neutrons.pos.x, neutrons.pos.y, neutrons.radius * 2);
     }
   }
-  collide() {}
+  update_pos() {
+    let oldPos = this.pos.copy();
+
+    super.update_pos();
+
+    let displacement = p5.Vector.sub(this.pos, oldPos);
+
+    for (let proton of this.protrons) {
+      proton.pos.add(displacement);
+    }
+
+    for (let neutron of this.neutrons) {
+      neutron.pos.add(displacement);
+    }
+  }
 }
 
 let protron;
 let electron;
 let nuetron;
 let particles = [];
-let pending_fusion = [];
-const k = 500;
+let pendingFusions = [];
+let particleType = 0;
+let draw_window = false;
+const k = 100;
 const nm = 5;
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  frameRate(3000);
   protron = new Protron(300, 320);
   particles.push(protron);
   electron = new Electron(200, 149);
@@ -255,12 +270,45 @@ function setup() {
   nuetron = new Neutron(320, 300);
   particles.push(nuetron);
 }
-
+function mouseWheel(event) {
+  if (event.delta > 0) {
+    if (particleType + 1 > 1) particleType = -1;
+    else particleType++;
+  } else if (event.delta < 0) {
+    if (particleType - 1 < -1) particleType = 1;
+    else particleType--;
+  }
+}
+function mousePressed() {
+  if (particleType === -1) particles.push(new Electron(mouseX, mouseY));
+  else if (particleType === 0) particles.push(new Neutron(mouseX, mouseY));
+  else if (particleType === 1) particles.push(new Protron(mouseX, mouseY));
+}
+function Rect(x, y, width, height, color = "white") {
+  fill(color);
+  quad(
+    x - width,
+    y - height,
+    x - width,
+    y + height,
+    x + width,
+    y + height,
+    x + width,
+    y - height,
+  );
+}
 function draw() {
   background("black");
-
   pendingFusions = [];
-  console.log(particles);
+  Rect(width / 2, 100, 200, 100, "gray");
+  fill(particleType < 0 ? "blue" : particleType > 0 ? "red" : "green");
+  circle(width / 2 - 150, 100, 50);
+  fill("black");
+  text(
+    `${particleType < 0 ? "electron" : particleType > 0 ? "protron" : "neutron"} click to place at mouse`,
+    width / 2 - 100,
+    100,
+  );
   // Calculate interactions between each pair
   for (let i = 0; i < particles.length; i++) {
     let particleA = particles[i];
