@@ -22,13 +22,17 @@ class Nucleus {
 class Particle {
   constructor(x, y, mass, charge, spin) {
     this.position = createVector(x, y);
-    this.velocity = p5.Vector.random2D();
-    this.velocity.mult(random(2, 6));
+    this.velocity = createVector(0, 0);
     this.acceleration = createVector(0, 0);
-    this.mass = random(2, 6);
-    this.r = sqrt(this.mass) * 20;
+    this.mass = mass;
+    this.spin = spin;
+    this.charge = charge;
+    this.r = this.scaleValue(this.mass);
+    this.color = charge < 0 ? "blue" : charge > 0 ? "red" : "green  ";
   }
-
+  scaleValue(v, base = 5, scale = 0.5) {
+    return base + Math.log(v + 1) * scale;
+  }
   applyForce(force) {
     let f = force.copy();
     f.div(this.mass);
@@ -36,7 +40,7 @@ class Particle {
   }
 
   // Method to update position
-  update_pos() {
+  updatePosition() {
     this.velocity.add(this.acceleration);
     this.position.add(this.velocity);
     this.acceleration.mult(0);
@@ -92,35 +96,87 @@ class Particle {
     }
   }
 
+  electricForces(other) {
+    let dir = p5.Vector.sub(this.position, other.position);
+    let dist = dir.mag();
+
+    let charge = this.charge * other.charge;
+
+    let f = k * (charge / (dist * dist));
+
+    let fv = dir.copy().mult(f);
+    this.applyForce(fv);
+  }
+
   // Method to display
   draw() {
-    stroke(0);
-    strokeWeight(2);
-    fill(127);
+    fill(this.color);
     circle(this.position.x, this.position.y, this.r * 2);
   }
 }
-class Protron extends Particle {}
-class Neutron extends Particle {}
-class Electron extends Particle {}
+class ParticleL extends Particle {
+  constructor(x, y, mass, charge, spin) {
+    super(x, y, mass, charge, spin);
+  }
+  strongForce(other) {
+    if (other instanceof ParticleL) {
+      let dir = p5.Vector.sub(this.position, other.position);
+      let dist = dir.mag();
+      if (Math.abs(dist) < 1) {
+        console.log("close enough for nuclues");
+      }
+      let f = k * (-1 / dist);
+
+      let fv = dir.copy().mult(f);
+      this.applyForce(fv);
+    }
+  }
+}
+class Protron extends ParticleL {
+  constructor(x, y) {
+    super(x, y, 1836, 1, 1 / 2);
+  }
+}
+class Neutron extends ParticleL {
+  constructor(x, y) {
+    super(x, y, 1839, 0, 1 / 2);
+  }
+}
+class Electron extends Particle {
+  constructor(x, y) {
+    super(x, y, 1, -1, 1);
+  }
+}
 
 let particles = [];
+let k = 1;
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  for (let i = 0; i < 10; i++) {
-    particles.push(new Particle(100 * i, 100, 100, 100, 100));
+  for (let i = 1; i < 2; i++) {
+    particles.push(new Electron(154 * i, 230));
+    particles.push(new Protron(254 * i, 350));
+    particles.push(new Neutron(300 * i, 350));
   }
 }
 function draw() {
   background("black");
-  for (let i = 1; i < particles.length; i++) {
+
+  for (let i = 0; i < particles.length; i++) {
     let particleA = particles[i];
     for (let j = 1; j < particles.length; j++) {
       let particleB = particles[j];
+      if (particleA instanceof ParticleL) {
+        particleA.strongForce(particleB);
+      }
+      if (particleB instanceof ParticleL) {
+        particleB.strongForce(particleA);
+      }
       particleA.collide(particleB);
-      particleA.edges();
-      particleA.update_pos();
-      particleA.draw();
+      particleA.electricForces(particleB);
+      particleB.electricForces(particleA);
     }
+    particleA.updatePosition();
+    particleA.edges();
+    particleA.draw();
   }
 }
