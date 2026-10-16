@@ -122,8 +122,10 @@ class ParticleL extends Particle {
     if (other instanceof ParticleL) {
       let dir = p5.Vector.sub(this.position, other.position);
       let dist = dir.mag();
-      if (Math.abs(dist) < 1) {
-        console.log("close enough for nuclues");
+      if (Math.abs(dist) < this.r + other.r) {
+        if (!(this in cue)) {
+          cue.push(this);
+        }
       }
       let f = k * (-1 / dist);
 
@@ -148,7 +150,16 @@ class Electron extends Particle {
   }
 }
 
+function clearcue(cue) {
+  let paired_cue = [];
+  for (let i = 0; i < cue.length; i += 2) {
+    paired_cue.push([cue[i], cue[i + 1]]);
+  }
+  return paired_cue;
+}
+
 let particles = [];
+let cue = [];
 let k = 1;
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -165,6 +176,9 @@ function draw() {
     let particleA = particles[i];
     for (let j = 1; j < particles.length; j++) {
       let particleB = particles[j];
+      if (particleB === particleA) {
+        continue;
+      }
       if (particleA instanceof ParticleL) {
         particleA.strongForce(particleB);
       }
@@ -175,6 +189,7 @@ function draw() {
       particleA.electricForces(particleB);
       particleB.electricForces(particleA);
     }
+    clearcue(cue);
     particleA.updatePosition();
     particleA.edges();
     particleA.draw();
