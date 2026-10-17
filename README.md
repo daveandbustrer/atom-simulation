@@ -7,8 +7,11 @@ it has kind of realistic simulation of protons, electrons, and neutrons
 
 ## what do do
 shift+click to place a neutron
+
 press e for an electron
+
 click for a protron
+
 click r to reset the screen
 
 ## where to find it
