@@ -6,7 +6,10 @@ a simple simulation of atomic particles
 it has kind of realistic simulation of protons, electrons, and neutrons
 
 ## what do do
-you can click to add a particle into the screen and see how it will react
+shift+click to place a neutron
+press e for an electron
+click for a protron
+click r to reset the screen
 
 ## where to find it
 click the link:
