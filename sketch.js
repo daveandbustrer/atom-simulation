@@ -1,197 +1,387 @@
-class Atom {
-  constructor(nucleus, electrons) {
-    this.nucleus = nucleus;
-    this.electrons = electrons;
-  }
-}
-class Nucleus {
-  constructor(protrons, neutrons) {
-    this.protrons = protrons;
-    this.neutrons = neutrons;
-  }
-}
+const ELECTRIC_K = 300;
+const STRONG_STRENGTH = 80;
+const STRONG_RANGE = 100;
+const MIN_DISTANCE = 10;
+const MERGE_GAP = 2;
 
-// The Nature of Code
-// Daniel Shiffman
-// http://natureofcode.com
-
-// Simple Particle System
-
-// A simple Particle class
+let particles = [];
+let mergeQueue = [];
+let queuedParticles = new Set();
 
 class Particle {
   constructor(x, y, mass, charge, spin) {
     this.position = createVector(x, y);
     this.velocity = createVector(0, 0);
     this.acceleration = createVector(0, 0);
+
     this.mass = mass;
-    this.spin = spin;
     this.charge = charge;
-    this.r = this.scaleValue(this.mass);
-    this.color = charge < 0 ? "blue" : charge > 0 ? "red" : "green  ";
-  }
-  scaleValue(v, base = 5, scale = 0.5) {
-    return base + Math.log(v + 1) * scale;
-  }
-  applyForce(force) {
-    let f = force.copy();
-    f.div(this.mass);
-    this.acceleration.add(f);
+    this.spin = spin;
+
+    this.r = this.scaleValue(mass);
+
+    this.color =
+      charge < 0 ? "dodgerblue" : charge > 0 ? "tomato" : "limegreen";
   }
 
-  // Method to update position
+  scaleValue(value, base = 5, scale = 0.5) {
+    return base + Math.log(value + 1) * scale;
+  }
+
+  applyForce(force) {
+    const acceleration = force.copy().div(this.mass);
+    this.acceleration.add(acceleration);
+  }
+
   updatePosition() {
     this.velocity.add(this.acceleration);
     this.position.add(this.velocity);
-    this.acceleration.mult(0);
-  }
-
-  // Collision Detection and Resolution
-  collide(other) {
-    let impactVector = p5.Vector.sub(other.position, this.position);
-    let d = impactVector.mag();
-    if (d < this.r + other.r) {
-      // Push the particles out so that they are not overlapping
-      let overlap = d - (this.r + other.r);
-      let dir = impactVector.copy();
-      dir.setMag(overlap * 0.5);
-      this.position.add(dir);
-      other.position.sub(dir);
-
-      // Correct the distance!
-      d = this.r + other.r;
-      impactVector.setMag(d);
-
-      let mSum = this.mass + other.mass;
-      let vDiff = p5.Vector.sub(other.velocity, this.velocity);
-      // Particle A (this)
-      let num = vDiff.dot(impactVector);
-      let den = mSum * d * d;
-      let deltaVA = impactVector.copy();
-      deltaVA.mult((2 * other.mass * num) / den);
-      this.velocity.add(deltaVA);
-      // Particle B (other)
-      let deltaVB = impactVector.copy();
-      deltaVB.mult((-2 * this.mass * num) / den);
-      other.velocity.add(deltaVB);
-    }
-  }
-
-  // Bounce edges
-  edges() {
-    if (this.position.x > width - this.r) {
-      this.position.x = width - this.r;
-      this.velocity.x *= -1;
-    } else if (this.position.x < this.r) {
-      this.position.x = this.r;
-      this.velocity.x *= -1;
-    }
-
-    if (this.position.y > height - this.r) {
-      this.position.y = height - this.r;
-      this.velocity.y *= -1;
-    } else if (this.position.y < this.r) {
-      this.position.y = this.r;
-      this.velocity.y *= -1;
-    }
+    this.acceleration.set(0, 0);
   }
 
   electricForces(other) {
-    let dir = p5.Vector.sub(this.position, other.position);
-    let dist = dir.mag();
+    const direction = p5.Vector.sub(this.position, other.position);
 
-    let charge = this.charge * other.charge;
+    const distanceSquared = direction.magSq();
 
-    let f = k * (charge / (dist * dist));
+    if (distanceSquared === 0) return;
 
-    let fv = dir.copy().mult(f);
-    this.applyForce(fv);
+    const softenedDistanceSquared = Math.max(
+      distanceSquared,
+      MIN_DISTANCE * MIN_DISTANCE,
+    );
+
+    const strength =
+      (ELECTRIC_K * this.charge * other.charge) / softenedDistanceSquared;
+
+    const force = direction.normalize().mult(strength);
+
+    this.applyForce(force);
+    other.applyForce(force.copy().mult(-1));
   }
 
-  // Method to display
-  draw() {
-    fill(this.color);
-    circle(this.position.x, this.position.y, this.r * 2);
-  }
-}
-class ParticleL extends Particle {
-  constructor(x, y, mass, charge, spin) {
-    super(x, y, mass, charge, spin);
-  }
-  strongForce(other) {
-    if (other instanceof ParticleL) {
-      let dir = p5.Vector.sub(this.position, other.position);
-      let dist = dir.mag();
-      if (Math.abs(dist) < this.r + other.r) {
-        if (!(this in cue)) {
-          cue.push(this);
-        }
-      }
-      let f = k * (-1 / dist);
+  collide(other) {
+    const normal = p5.Vector.sub(other.position, this.position);
 
-      let fv = dir.copy().mult(f);
-      this.applyForce(fv);
+    const distance = normal.mag();
+    const minimumDistance = this.r + other.r;
+
+    if (distance >= minimumDistance) return;
+
+    if (distance === 0) {
+      normal.set(1, 0);
+    } else {
+      normal.div(distance);
+    }
+
+    const inverseMassA = 1 / this.mass;
+    const inverseMassB = 1 / other.mass;
+    const inverseMassSum = inverseMassA + inverseMassB;
+
+    const overlap = minimumDistance - distance;
+
+    this.position.sub(
+      normal.copy().mult((overlap * inverseMassA) / inverseMassSum),
+    );
+
+    other.position.add(
+      normal.copy().mult((overlap * inverseMassB) / inverseMassSum),
+    );
+
+    const relativeVelocity = p5.Vector.sub(other.velocity, this.velocity);
+
+    const velocityAlongNormal = relativeVelocity.dot(normal);
+
+    if (velocityAlongNormal >= 0) return;
+
+    const restitution = 1;
+
+    const impulseMagnitude =
+      (-(1 + restitution) * velocityAlongNormal) / inverseMassSum;
+
+    const impulse = normal.copy().mult(impulseMagnitude);
+
+    this.velocity.sub(impulse.copy().mult(inverseMassA));
+
+    other.velocity.add(impulse.copy().mult(inverseMassB));
+  }
+
+  edges() {
+    if (width <= this.r * 2) {
+      this.position.x = width / 2;
+      this.velocity.x = 0;
+    } else if (this.position.x > width - this.r) {
+      this.position.x = width - this.r;
+      this.velocity.x = -Math.abs(this.velocity.x);
+    } else if (this.position.x < this.r) {
+      this.position.x = this.r;
+      this.velocity.x = Math.abs(this.velocity.x);
+    }
+    if (height <= this.r * 2) {
+      this.position.y = height / 2;
+      this.velocity.y = 0;
+    } else if (this.position.y > height - this.r) {
+      this.position.y = height - this.r;
+      this.velocity.y = -Math.abs(this.velocity.y);
+    } else if (this.position.y < this.r) {
+      this.position.y = this.r;
+      this.velocity.y = Math.abs(this.velocity.y);
     }
   }
-}
-class Protron extends ParticleL {
-  constructor(x, y) {
-    super(x, y, 1836, 1, 1 / 2);
+
+  otherNeeded(other) {
+    this.electricForces(other);
+    this.collide(other);
+  }
+
+  draw() {
+    push();
+    noStroke();
+    fill(this.color);
+    circle(this.position.x, this.position.y, this.r * 2);
+    pop();
+  }
+
+  solo() {
+    this.updatePosition();
+    this.edges();
+    this.draw();
   }
 }
-class Neutron extends ParticleL {
+class NuclearParticle extends Particle {
+  constructor(x, y, mass, charge, spin) {
+    super(x, y, mass, charge, spin);
+    this.protons = [];
+    this.neutrons = [];
+  }
+
+  strongForce(other) {
+    const direction = p5.Vector.sub(other.position, this.position);
+    const distance = direction.mag();
+
+    if (distance === 0 || distance >= STRONG_RANGE) {
+      return;
+    }
+
+    const strength = STRONG_STRENGTH * (1 - distance / STRONG_RANGE);
+    const force = direction.normalize().mult(strength);
+
+    this.applyForce(force);
+    other.applyForce(force.copy().mult(-1));
+  }
+
+  otherNeeded(other) {
+    if (!(other instanceof NuclearParticle)) {
+      super.otherNeeded(other);
+      return;
+    }
+
+    const distance = p5.Vector.dist(this.position, other.position);
+
+    if (distance <= this.r + other.r + MERGE_GAP) {
+      if (queueMerge(this, other)) {
+        return;
+      }
+    }
+
+    this.strongForce(other);
+    super.otherNeeded(other);
+  }
+}
+class Proton extends NuclearParticle {
+  constructor(x, y) {
+    super(x, y, 1836, 1, 1 / 2);
+    this.protons = [this];
+  }
+}
+class Neutron extends NuclearParticle {
   constructor(x, y) {
     super(x, y, 1839, 0, 1 / 2);
+    this.neutrons = [this];
   }
 }
 class Electron extends Particle {
   constructor(x, y) {
-    super(x, y, 1, -1, 1);
+    super(x, y, 1, -1, 1 / 2);
   }
 }
 
-function clearcue(cue) {
-  let paired_cue = [];
-  for (let i = 0; i < cue.length; i += 2) {
-    paired_cue.push([cue[i], cue[i + 1]]);
+class Nucleus extends NuclearParticle {
+  constructor(a, b) {
+    const mass = a.mass + b.mass;
+    const position = a.position
+      .copy()
+      .mult(a.mass)
+      .add(b.position.copy().mult(b.mass))
+      .div(mass);
+
+    super(position.x, position.y, mass, a.charge + b.charge, null);
+
+    this.protons = [...a.protons, ...b.protons];
+    this.neutrons = [...a.neutrons, ...b.neutrons];
+
+    this.velocity = a.velocity
+      .copy()
+      .mult(a.mass)
+      .add(b.velocity.copy().mult(b.mass))
+      .div(mass);
+
+    this.acceleration = a.acceleration
+      .copy()
+      .mult(a.mass)
+      .add(b.acceleration.copy().mult(b.mass))
+      .div(mass);
+
+    const nucleonCount = this.protons.length + this.neutrons.length;
+
+    this.r = 8 + Math.sqrt(nucleonCount) * 4;
+    this.color = "orange";
   }
-  return paired_cue;
+
+  draw() {
+    super.draw();
+
+    push();
+    fill("white");
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(11);
+
+    text(
+      `${this.protons.length}p ${this.neutrons.length}n`,
+      this.position.x,
+      this.position.y - this.r - 12,
+    );
+
+    pop();
+  }
 }
 
-let particles = [];
-let cue = [];
-let k = 1;
+//will implement later
+class Atom {
+  constructor(nucleus, electrons = []) {
+    this.nucleus = nucleus;
+    this.electrons = electrons;
+  }
+}
+
+function queueMerge(a, b) {
+  if (a === b) return false;
+
+  if (queuedParticles.has(a) || queuedParticles.has(b)) {
+    return false;
+  }
+
+  queuedParticles.add(a);
+  queuedParticles.add(b);
+
+  mergeQueue.push([a, b]);
+
+  return true;
+}
+
+function processMerges() {
+  if (mergeQueue.length === 0) return;
+
+  const removed = new Set();
+  const added = [];
+
+  for (const [a, b] of mergeQueue) {
+    if (removed.has(a) || removed.has(b)) {
+      continue;
+    }
+
+    added.push(new Nucleus(a, b));
+
+    removed.add(a);
+    removed.add(b);
+  }
+
+  particles = particles.filter((particle) => !removed.has(particle));
+
+  particles.push(...added);
+
+  mergeQueue = [];
+  queuedParticles.clear();
+}
+
+function resetSimulation() {
+  particles = [];
+  mergeQueue = [];
+  queuedParticles.clear();
+}
+
 function setup() {
   createCanvas(windowWidth, windowHeight);
-  for (let i = 1; i < 2; i++) {
-    particles.push(new Electron(154 * i, 230));
-    particles.push(new Protron(254 * i, 350));
-    particles.push(new Neutron(300 * i, 350));
-  }
+  resetSimulation();
 }
+
 function draw() {
   background("black");
 
+  mergeQueue = [];
+  queuedParticles.clear();
+
   for (let i = 0; i < particles.length; i++) {
-    let particleA = particles[i];
-    for (let j = 1; j < particles.length; j++) {
-      let particleB = particles[j];
-      if (particleB === particleA) {
-        continue;
-      }
-      if (particleA instanceof ParticleL) {
-        particleA.strongForce(particleB);
-      }
-      if (particleB instanceof ParticleL) {
-        particleB.strongForce(particleA);
-      }
-      particleA.collide(particleB);
-      particleA.electricForces(particleB);
-      particleB.electricForces(particleA);
+    for (let j = i + 1; j < particles.length; j++) {
+      particles[i].otherNeeded(particles[j]);
     }
-    clearcue(cue);
-    particleA.updatePosition();
-    particleA.edges();
-    particleA.draw();
   }
+
+  processMerges();
+
+  for (const particle of particles) {
+    particle.solo();
+  }
+
+  drawInstructions();
+}
+
+function drawInstructions() {
+  push();
+
+  noStroke();
+  fill(220);
+  textAlign(LEFT, TOP);
+  textSize(13);
+
+  text(
+    "Blue: electron | Red: proton | Green: neutron | Orange: nucleus\n" +
+      "Click: add proton | Shift + click: add neutron\n" +
+      "E: add electron at mouse | R: reset",
+    14,
+    14,
+  );
+
+  pop();
+}
+
+function mousePressed() {
+  if (mouseX < 0 || mouseX > width || mouseY < 0 || mouseY > height) {
+    return;
+  }
+
+  if (keyIsDown(SHIFT)) {
+    particles.push(new Neutron(mouseX, mouseY));
+  } else {
+    particles.push(new Proton(mouseX, mouseY));
+  }
+
+  return false;
+}
+
+function keyPressed() {
+  if (key === "r" || key === "R") {
+    resetSimulation();
+  }
+
+  if (key === "e" || key === "E") {
+    particles.push(
+      new Electron(constrain(mouseX, 0, width), constrain(mouseY, 0, height)),
+    );
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
 }
